@@ -15,23 +15,30 @@ import (
 var ErrNotFound = errors.New("service not found")
 
 type Snapshot struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	Status        string `json:"status"`
-	PID           int    `json:"pid"`
-	UptimeSeconds int64  `json:"uptime_seconds"`
-	LastError     string `json:"last_error,omitempty"`
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	Status           string `json:"status"`
+	PID              int    `json:"pid"`
+	UptimeSeconds    int64  `json:"uptime_seconds"`
+	LastError        string `json:"last_error,omitempty"`
+	RestartPolicy    string `json:"restart_policy"`
+	RestartCount     int    `json:"restart_count"`
+	RestartInSeconds int64  `json:"restart_in_seconds,omitempty"`
 }
 
 type Service struct {
 	profile config.Service
 	logs    *Ring
 
-	mu        sync.Mutex
-	cmd       *exec.Cmd
-	startedAt time.Time
-	done      chan struct{}
-	lastError string
+	mu            sync.Mutex
+	cmd           *exec.Cmd
+	startedAt     time.Time
+	done          chan struct{}
+	lastError     string
+	stopRequested bool
+	restartCount  int
+	restartAt     time.Time
+	restartCancel chan struct{}
 }
 
 type Manager struct {
@@ -95,6 +102,13 @@ func (s *Service) Start() error {
 		return nil
 	}
 
+	s.cancelRestartLocked()
+	s.stopRequested = false
+	s.restartCount = 0
+	return s.startLocked()
+}
+
+func (s *Service) startLocked() error {
 	cmd := exec.Command(s.profile.Command[0], s.profile.Command[1:]...)
 	cmd.Dir = s.profile.WorkDir
 	cmd.Env = os.Environ()
@@ -120,19 +134,109 @@ func (s *Service) Start() error {
 
 func (s *Service) wait(cmd *exec.Cmd, done chan struct{}) {
 	err := cmd.Wait()
+
 	s.mu.Lock()
 	if s.cmd == cmd {
+		runtime := time.Since(s.startedAt)
 		s.cmd = nil
 		if err != nil {
 			s.lastError = err.Error()
+		}
+		if runtime >= time.Minute {
+			s.restartCount = 0
+		}
+		if !s.stopRequested && s.shouldRestart(err) {
+			s.scheduleRestartLocked()
 		}
 	}
 	s.mu.Unlock()
 	close(done)
 }
 
+func (s *Service) shouldRestart(err error) bool {
+	switch s.profile.Restart {
+	case "always":
+		return true
+	case "on-failure":
+		return err != nil
+	default:
+		return false
+	}
+}
+
+func (s *Service) scheduleRestartLocked() bool {
+	limit := s.profile.RestartLimit
+	if limit <= 0 {
+		limit = 5
+	}
+	if s.restartCount >= limit {
+		if s.lastError != "" {
+			s.lastError += "; "
+		}
+		s.lastError += fmt.Sprintf("restart limit reached (%d)", limit)
+		return false
+	}
+
+	s.restartCount++
+	delay := restartDelay(s.profile.RestartBackoffSeconds, s.restartCount)
+	cancel := make(chan struct{})
+	s.restartCancel = cancel
+	s.restartAt = time.Now().Add(delay)
+	go s.restartAfter(delay, cancel)
+	return true
+}
+
+func (s *Service) restartAfter(delay time.Duration, cancel chan struct{}) {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+	case <-cancel:
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.restartCancel != cancel || s.stopRequested || s.cmd != nil {
+		return
+	}
+	s.restartCancel = nil
+	s.restartAt = time.Time{}
+	if err := s.startLocked(); err != nil && !s.stopRequested && s.shouldRestart(err) {
+		s.scheduleRestartLocked()
+	}
+}
+
+func restartDelay(baseSeconds, attempt int) time.Duration {
+	if baseSeconds <= 0 {
+		baseSeconds = 2
+	}
+	delay := time.Duration(baseSeconds) * time.Second
+	for i := 1; i < attempt; i++ {
+		if delay >= 30*time.Second {
+			return 30 * time.Second
+		}
+		delay *= 2
+	}
+	if delay > 30*time.Second {
+		return 30 * time.Second
+	}
+	return delay
+}
+
+func (s *Service) cancelRestartLocked() {
+	if s.restartCancel != nil {
+		close(s.restartCancel)
+		s.restartCancel = nil
+	}
+	s.restartAt = time.Time{}
+}
+
 func (s *Service) Stop() error {
 	s.mu.Lock()
+	s.stopRequested = true
+	s.cancelRestartLocked()
 	cmd := s.cmd
 	done := s.done
 	s.mu.Unlock()
@@ -155,11 +259,17 @@ func (s *Service) Snapshot() Snapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	policy := s.profile.Restart
+	if policy == "" {
+		policy = "never"
+	}
 	snapshot := Snapshot{
-		ID:        s.profile.ID,
-		Name:      s.profile.Name,
-		Status:    "stopped",
-		LastError: s.lastError,
+		ID:            s.profile.ID,
+		Name:          s.profile.Name,
+		Status:        "stopped",
+		LastError:     s.lastError,
+		RestartPolicy: policy,
+		RestartCount:  s.restartCount,
 	}
 	if snapshot.Name == "" {
 		snapshot.Name = snapshot.ID
@@ -168,6 +278,12 @@ func (s *Service) Snapshot() Snapshot {
 		snapshot.Status = "running"
 		snapshot.PID = s.cmd.Process.Pid
 		snapshot.UptimeSeconds = int64(time.Since(s.startedAt).Seconds())
+	} else if s.restartCancel != nil && !s.restartAt.IsZero() {
+		snapshot.Status = "restarting"
+		remaining := time.Until(s.restartAt)
+		if remaining > 0 {
+			snapshot.RestartInSeconds = int64((remaining + time.Second - 1) / time.Second)
+		}
 	}
 	return snapshot
 }

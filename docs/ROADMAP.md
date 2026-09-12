@@ -16,14 +16,14 @@
 - [x] Claude Code Proxy starter profile
 - [x] Android endpoint/settings screen
 - [ ] Foreground notification for connected agent
-- [ ] Better process exit/restart policy
+- [x] Better process exit/restart policy
 - [ ] Per-service environment editor
 - [ ] Live log streaming (SSE or WebSocket)
 
 ## M2 — Agent runtime
 
 - [ ] Health checks per service
-- [ ] Restart policies with backoff
+- [x] Restart policies with backoff
 - [ ] CPU/RAM metrics
 - [ ] Persisted event history
 - [ ] Import/export service profiles

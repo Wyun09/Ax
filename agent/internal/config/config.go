@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"regexp"
+	"strings"
 )
 
 var serviceIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
@@ -18,11 +19,14 @@ type Config struct {
 }
 
 type Service struct {
-	ID      string            `json:"id"`
-	Name    string            `json:"name"`
-	Command []string          `json:"command"`
-	WorkDir string            `json:"workdir,omitempty"`
-	Env     map[string]string `json:"env,omitempty"`
+	ID                    string            `json:"id"`
+	Name                  string            `json:"name"`
+	Command               []string          `json:"command"`
+	WorkDir               string            `json:"workdir,omitempty"`
+	Env                   map[string]string `json:"env,omitempty"`
+	Restart               string            `json:"restart,omitempty"`
+	RestartLimit          int               `json:"restart_limit,omitempty"`
+	RestartBackoffSeconds int               `json:"restart_backoff_seconds,omitempty"`
 }
 
 func Load(path string) (Config, error) {
@@ -37,6 +41,21 @@ func Load(path string) (Config, error) {
 	}
 	if cfg.Listen == "" {
 		cfg.Listen = "127.0.0.1:18766"
+	}
+	for i := range cfg.Services {
+		service := &cfg.Services[i]
+		service.Restart = strings.ToLower(strings.TrimSpace(service.Restart))
+		if service.Restart == "" {
+			service.Restart = "never"
+		}
+		if service.Restart != "never" {
+			if service.RestartLimit == 0 {
+				service.RestartLimit = 5
+			}
+			if service.RestartBackoffSeconds == 0 {
+				service.RestartBackoffSeconds = 2
+			}
+		}
 	}
 	if err := validate(cfg); err != nil {
 		return Config{}, err
@@ -60,6 +79,23 @@ func validate(cfg Config) error {
 		}
 		if len(service.Command) == 0 || service.Command[0] == "" {
 			return fmt.Errorf("services[%d] %q: command is required", i, service.ID)
+		}
+		switch service.Restart {
+		case "never", "on-failure", "always":
+		default:
+			return fmt.Errorf("services[%d] %q: restart must be never, on-failure, or always", i, service.ID)
+		}
+		if service.RestartLimit < 0 || service.RestartLimit > 100 {
+			return fmt.Errorf("services[%d] %q: restart_limit must be between 0 and 100", i, service.ID)
+		}
+		if service.RestartBackoffSeconds < 0 || service.RestartBackoffSeconds > 60 {
+			return fmt.Errorf("services[%d] %q: restart_backoff_seconds must be between 0 and 60", i, service.ID)
+		}
+		if service.Restart != "never" && service.RestartLimit == 0 {
+			return fmt.Errorf("services[%d] %q: restart_limit must be greater than 0 when restart is enabled", i, service.ID)
+		}
+		if service.Restart != "never" && service.RestartBackoffSeconds == 0 {
+			return fmt.Errorf("services[%d] %q: restart_backoff_seconds must be greater than 0 when restart is enabled", i, service.ID)
 		}
 		if _, ok := seen[service.ID]; ok {
 			return fmt.Errorf("duplicate service id %q", service.ID)

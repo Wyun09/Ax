@@ -5,12 +5,16 @@
     {
       "id": "demo",
       "name": "Demo Worker",
-      "command": ["sh", "-c", "while true; do echo \"ax demo $(date)\"; sleep 5; done"]
+      "command": ["sh", "-c", "while true; do echo \"ax demo $(date)\"; sleep 5; done"],
+      "restart": "never"
     },
     {
       "id": "claude-proxy",
       "name": "Claude Code Proxy",
-      "command": ["claude-code-proxy", "serve", "--port", "18765"]
+      "command": ["claude-code-proxy", "serve", "--port", "18765"],
+      "restart": "on-failure",
+      "restart_limit": 8,
+      "restart_backoff_seconds": 2
     }
   ]
 }
