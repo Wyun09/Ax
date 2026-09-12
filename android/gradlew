@@ -1,0 +1,19 @@
+#!/usr/bin/env sh
+set -eu
+
+GRADLE_VERSION="8.9"
+BASE_DIR="${HOME}/.gradle/ax-wrapper"
+DIST_DIR="${BASE_DIR}/gradle-${GRADLE_VERSION}"
+ZIP_PATH="${BASE_DIR}/gradle-${GRADLE_VERSION}-bin.zip"
+
+if [ ! -x "${DIST_DIR}/bin/gradle" ]; then
+  mkdir -p "${BASE_DIR}"
+  if [ ! -f "${ZIP_PATH}" ]; then
+    echo "Ax: downloading Gradle ${GRADLE_VERSION}..."
+    curl -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -o "${ZIP_PATH}"
+  fi
+  rm -rf "${DIST_DIR}"
+  unzip -q "${ZIP_PATH}" -d "${BASE_DIR}"
+fi
+
+exec "${DIST_DIR}/bin/gradle" "$@"

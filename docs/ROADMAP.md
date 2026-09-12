@@ -7,10 +7,13 @@
 - [x] Local HTTP/JSON protocol
 - [x] Native Compose dashboard shell
 - [x] Basic log tail
+- [x] Agent CI
+- [x] Android debug APK CI
 
 ## M1 — Termux controller
 
-- [ ] Agent install script for Termux
+- [x] Agent install script for Termux
+- [x] Claude Code Proxy starter profile
 - [ ] Android endpoint/settings screen
 - [ ] Foreground notification for connected agent
 - [ ] Better process exit/restart policy
