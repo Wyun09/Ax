@@ -1,0 +1,18 @@
+# Local Ax config (may contain paths or environment values)
+agent/ax.json
+
+# Go
+agent/ax-agent
+agent/dist/
+
+# Android / Gradle
+android/.gradle/
+android/local.properties
+android/**/build/
+*.iml
+.idea/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/

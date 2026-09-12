@@ -1,0 +1,16 @@
+{
+  "listen": "127.0.0.1:18766",
+  "allow_remote": false,
+  "services": [
+    {
+      "id": "demo",
+      "name": "Demo Worker",
+      "command": ["sh", "-c", "while true; do echo \"ax demo $(date)\"; sleep 5; done"]
+    },
+    {
+      "id": "claude-proxy",
+      "name": "Claude Code Proxy",
+      "command": ["claude-code-proxy", "serve", "--port", "18765"]
+    }
+  ]
+}
