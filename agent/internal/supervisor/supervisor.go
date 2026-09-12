@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -15,30 +16,36 @@ import (
 var ErrNotFound = errors.New("service not found")
 
 type Snapshot struct {
-	ID               string `json:"id"`
-	Name             string `json:"name"`
-	Status           string `json:"status"`
-	PID              int    `json:"pid"`
-	UptimeSeconds    int64  `json:"uptime_seconds"`
-	LastError        string `json:"last_error,omitempty"`
-	RestartPolicy    string `json:"restart_policy"`
-	RestartCount     int    `json:"restart_count"`
-	RestartInSeconds int64  `json:"restart_in_seconds,omitempty"`
+	ID               string  `json:"id"`
+	Name             string  `json:"name"`
+	Status           string  `json:"status"`
+	PID              int     `json:"pid"`
+	UptimeSeconds    int64   `json:"uptime_seconds"`
+	CPUPercent       float64 `json:"cpu_percent,omitempty"`
+	MemoryBytes      uint64  `json:"memory_bytes,omitempty"`
+	LastError        string  `json:"last_error,omitempty"`
+	RestartPolicy    string  `json:"restart_policy"`
+	RestartCount     int     `json:"restart_count"`
+	RestartInSeconds int64   `json:"restart_in_seconds,omitempty"`
 }
 
 type Service struct {
 	profile config.Service
 	logs    *Ring
 
-	mu            sync.Mutex
-	cmd           *exec.Cmd
-	startedAt     time.Time
-	done          chan struct{}
-	lastError     string
-	stopRequested bool
-	restartCount  int
-	restartAt     time.Time
-	restartCancel chan struct{}
+	mu               sync.Mutex
+	cmd              *exec.Cmd
+	startedAt        time.Time
+	done             chan struct{}
+	lastError        string
+	stopRequested    bool
+	restartCount     int
+	restartAt        time.Time
+	restartCancel    chan struct{}
+	lastProcessTicks uint64
+	lastSystemTicks  uint64
+	cpuPercent       float64
+	memoryBytes      uint64
 }
 
 type Manager struct {
@@ -127,6 +134,10 @@ func (s *Service) startLocked() error {
 	s.startedAt = time.Now()
 	s.lastError = ""
 	s.done = make(chan struct{})
+	s.lastProcessTicks = 0
+	s.lastSystemTicks = 0
+	s.cpuPercent = 0
+	s.memoryBytes = 0
 	done := s.done
 	go s.wait(cmd, done)
 	return nil
@@ -255,6 +266,26 @@ func (s *Service) Stop() error {
 	return cmd.Process.Kill()
 }
 
+func (s *Service) sampleMetricsLocked(pid int) {
+	metrics, err := readProcMetrics(pid)
+	if err != nil {
+		return
+	}
+	if s.lastSystemTicks > 0 && metrics.totalTicks > s.lastSystemTicks && metrics.processTicks >= s.lastProcessTicks {
+		processDelta := metrics.processTicks - s.lastProcessTicks
+		totalDelta := metrics.totalTicks - s.lastSystemTicks
+		cpu := float64(processDelta) / float64(totalDelta) * float64(runtime.NumCPU()) * 100
+		maxCPU := float64(runtime.NumCPU() * 100)
+		if cpu > maxCPU {
+			cpu = maxCPU
+		}
+		s.cpuPercent = cpu
+	}
+	s.lastProcessTicks = metrics.processTicks
+	s.lastSystemTicks = metrics.totalTicks
+	s.memoryBytes = metrics.rssBytes
+}
+
 func (s *Service) Snapshot() Snapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -278,6 +309,9 @@ func (s *Service) Snapshot() Snapshot {
 		snapshot.Status = "running"
 		snapshot.PID = s.cmd.Process.Pid
 		snapshot.UptimeSeconds = int64(time.Since(s.startedAt).Seconds())
+		s.sampleMetricsLocked(snapshot.PID)
+		snapshot.CPUPercent = s.cpuPercent
+		snapshot.MemoryBytes = s.memoryBytes
 	} else if s.restartCancel != nil && !s.restartAt.IsZero() {
 		snapshot.Status = "restarting"
 		remaining := time.Until(s.restartAt)

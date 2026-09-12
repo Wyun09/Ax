@@ -24,7 +24,7 @@
 
 - [ ] Health checks per service
 - [x] Restart policies with backoff
-- [ ] CPU/RAM metrics
+- [x] CPU/RAM metrics
 - [ ] Persisted event history
 - [ ] Import/export service profiles
 

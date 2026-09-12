@@ -26,11 +26,15 @@ http://127.0.0.1:18766
     "status":"running",
     "pid":12345,
     "uptime_seconds":42,
+    "cpu_percent":3.2,
+    "memory_bytes":73400320,
     "restart_policy":"on-failure",
     "restart_count":0
   }
 ]
 ```
+
+On Linux/Termux, running services include CPU and resident-memory metrics collected from `/proc`. CPU percentage is sampled between service-list requests and follows the usual per-process convention where a fully busy process on one core is approximately 100%.
 
 A service may report `status: "restarting"` while waiting for its backoff timer. In that state, `restart_in_seconds` reports the approximate delay before the next launch attempt.
 

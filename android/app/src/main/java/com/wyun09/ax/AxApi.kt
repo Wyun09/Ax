@@ -13,6 +13,11 @@ data class ServiceStatus(
     val status: String,
     val pid: Int,
     val uptimeSeconds: Long,
+    val cpuPercent: Double,
+    val memoryBytes: Long,
+    val restartPolicy: String,
+    val restartCount: Int,
+    val restartInSeconds: Long,
     val lastError: String?
 )
 
@@ -30,6 +35,11 @@ class AxApi(private val baseUrl: String = "http://127.0.0.1:18766") {
                         status = item.optString("status", "stopped"),
                         pid = item.optInt("pid", 0),
                         uptimeSeconds = item.optLong("uptime_seconds", 0),
+                        cpuPercent = item.optDouble("cpu_percent", 0.0),
+                        memoryBytes = item.optLong("memory_bytes", 0),
+                        restartPolicy = item.optString("restart_policy", "never"),
+                        restartCount = item.optInt("restart_count", 0),
+                        restartInSeconds = item.optLong("restart_in_seconds", 0),
                         lastError = item.optString("last_error").takeIf { it.isNotBlank() }
                     )
                 )

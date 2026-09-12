@@ -138,7 +138,11 @@ private fun Dashboard() {
                             onToggle = {
                                 scope.launch {
                                     runCatching {
-                                        if (service.status == "running") api.stop(service.id) else api.start(service.id)
+                                        if (service.status == "running" || service.status == "restarting") {
+                                            api.stop(service.id)
+                                        } else {
+                                            api.start(service.id)
+                                        }
                                     }.onFailure { error = it.message }
                                     refresh()
                                 }
@@ -225,6 +229,7 @@ private fun ServiceCard(
     onLogs: () -> Unit
 ) {
     val running = service.status == "running"
+    val active = running || service.status == "restarting"
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp)
@@ -237,13 +242,27 @@ private fun ServiceCard(
             ) {
                 Column {
                     Text(service.name, fontWeight = FontWeight.Bold)
-                    Text(if (running) "● Running" else "○ Stopped")
+                    Text(
+                        when (service.status) {
+                            "running" -> "● Running"
+                            "restarting" -> "↻ Restarting in ${service.restartInSeconds}s"
+                            else -> "○ Stopped"
+                        }
+                    )
                 }
-                Button(onClick = onToggle) { Text(if (running) "Stop" else "Start") }
+                Button(onClick = onToggle) { Text(if (active) "Stop" else "Start") }
             }
             if (running) {
                 Spacer(Modifier.height(8.dp))
                 Text("PID ${service.pid}  ·  ${formatUptime(service.uptimeSeconds)}")
+                Text("CPU ${"%.1f".format(service.cpuPercent)}%  ·  RAM ${formatBytes(service.memoryBytes)}")
+            }
+            if (service.restartPolicy != "never") {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Restart ${service.restartPolicy}  ·  attempts ${service.restartCount}",
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
             if (!service.lastError.isNullOrBlank()) {
                 Spacer(Modifier.height(8.dp))
@@ -260,4 +279,10 @@ private fun formatUptime(seconds: Long): String {
     val minutes = (seconds % 3600) / 60
     val secs = seconds % 60
     return if (hours > 0) "%dh %02dm".format(hours, minutes) else "%dm %02ds".format(minutes, secs)
+}
+
+private fun formatBytes(bytes: Long): String {
+    if (bytes <= 0) return "0 B"
+    val mb = bytes / (1024.0 * 1024.0)
+    return if (mb >= 1024) "%.2f GB".format(mb / 1024.0) else "%.1f MB".format(mb)
 }
