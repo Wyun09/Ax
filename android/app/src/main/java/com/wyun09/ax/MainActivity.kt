@@ -21,6 +21,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -34,6 +35,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -54,13 +56,19 @@ private fun AxTheme(content: @Composable () -> Unit) {
 
 @Composable
 private fun Dashboard() {
-    val api = remember { AxApi() }
+    val context = LocalContext.current
+    val endpointStore = remember(context) { EndpointStore(context) }
+    var endpoint by remember { mutableStateOf(endpointStore.load()) }
+    val api = remember(endpoint) { AxApi(endpoint) }
     val scope = rememberCoroutineScope()
+
     var services by remember { mutableStateOf<List<ServiceStatus>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var logsTitle by remember { mutableStateOf<String?>(null) }
     var logLines by remember { mutableStateOf<List<String>>(emptyList()) }
+    var showEndpointDialog by remember { mutableStateOf(false) }
+    var endpointDraft by remember { mutableStateOf(endpoint) }
 
     suspend fun refresh() {
         try {
@@ -73,7 +81,8 @@ private fun Dashboard() {
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(endpoint) {
+        loading = true
         refresh()
         while (true) {
             delay(2_000)
@@ -88,8 +97,25 @@ private fun Dashboard() {
                 .padding(padding)
                 .padding(horizontal = 18.dp, vertical = 22.dp)
         ) {
-            Text("AX", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black)
-            Text("Agent eXecution", style = MaterialTheme.typography.bodyMedium)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text("AX", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black)
+                    Text("Agent eXecution", style = MaterialTheme.typography.bodyMedium)
+                    Text(endpoint, style = MaterialTheme.typography.bodySmall)
+                }
+                OutlinedButton(
+                    onClick = {
+                        endpointDraft = endpoint
+                        showEndpointDialog = true
+                    }
+                ) {
+                    Text("Endpoint")
+                }
+            }
             Spacer(Modifier.height(20.dp))
 
             if (error != null) {
@@ -132,6 +158,48 @@ private fun Dashboard() {
                 }
             }
         }
+    }
+
+    if (showEndpointDialog) {
+        AlertDialog(
+            onDismissRequest = { showEndpointDialog = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val normalized = normalizeEndpoint(endpointDraft)
+                        if (normalized == null) {
+                            error = "Endpoint must be a valid http:// or https:// URL"
+                        } else {
+                            endpointStore.save(normalized)
+                            endpoint = normalized
+                            services = emptyList()
+                            loading = true
+                            error = null
+                            showEndpointDialog = false
+                        }
+                    }
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEndpointDialog = false }) { Text("Cancel") }
+            },
+            title = { Text("Agent endpoint") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = endpointDraft,
+                        onValueChange = { endpointDraft = it },
+                        singleLine = true,
+                        label = { Text("URL") },
+                        placeholder = { Text(EndpointStore.DEFAULT_ENDPOINT) }
+                    )
+                    Text(
+                        "Keep the default loopback endpoint unless the Ax agent is explicitly configured for authenticated remote access.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        )
     }
 
     if (logsTitle != null) {
