@@ -15,7 +15,7 @@
 - [x] Agent install script for Termux
 - [x] Claude Code Proxy starter profile
 - [x] Android endpoint/settings screen
-- [ ] Foreground notification for connected agent
+- [x] Foreground notification for connected agent
 - [x] Better process exit/restart policy
 - [ ] Per-service environment editor
 - [ ] Live log streaming (SSE or WebSocket)
