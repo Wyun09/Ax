@@ -1,12 +1,8 @@
 package com.wyun09.ax
 
-import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -62,32 +58,21 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private val AxBlue = Color(0xFF4B6EF5)
-private val AxBlueSoft = Color(0xFF9EB7FF)
-private val AxBackground = Color(0xFF070910)
+private val AxBlueSoft = Color(0xFFAFC1FF)
+private val AxBackground = Color(0xFF060811)
 private val AxSurface = Color(0xFF101522)
-private val AxSurfaceRaised = Color(0xFF171D2B)
-private val AxSuccess = Color(0xFF65D79D)
+private val AxSurfaceRaised = Color(0xFF181F30)
+private val AxSuccess = Color(0xFF66D9A2)
 private val AxWarning = Color(0xFFFFC56B)
-private val AxTextMuted = Color(0xFF9AA5B8)
+private val AxDanger = Color(0xFFFF7B7B)
+private val AxMuted = Color(0xFF9AA6BB)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        startAgentMonitor()
+        // 不在应用启动时自动拉起前台服务。
+        // 部分 Android/厂商系统会因此直接拒绝启动，先保证主界面稳定可用。
         setContent { AxTheme { AxApp() } }
-    }
-
-    private fun startAgentMonitor() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_PERMISSION_REQUEST)
-        }
-        startForegroundService(Intent(this, AgentMonitorService::class.java))
-    }
-
-    companion object {
-        private const val NOTIFICATION_PERMISSION_REQUEST = 18766
     }
 }
 
@@ -99,7 +84,8 @@ private fun AxTheme(content: @Composable () -> Unit) {
             secondary = AxBlueSoft,
             background = AxBackground,
             surface = AxSurface,
-            surfaceVariant = AxSurfaceRaised
+            surfaceVariant = AxSurfaceRaised,
+            error = AxDanger
         ),
         content = content
     )
@@ -119,18 +105,18 @@ private fun AxApp() {
     var services by remember { mutableStateOf<List<ServiceStatus>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
-    var logsTitle by remember { mutableStateOf<String?>(null) }
+    var logsFor by remember { mutableStateOf<String?>(null) }
     var logLines by remember { mutableStateOf<List<String>>(emptyList()) }
-    var showEndpointDialog by remember { mutableStateOf(false) }
+    var endpointDialog by remember { mutableStateOf(false) }
     var endpointDraft by remember { mutableStateOf(endpoint) }
-    var showWelcome by remember { mutableStateOf(!endpointStore.guideSeen()) }
+    var welcome by remember { mutableStateOf(!endpointStore.guideSeen()) }
 
     suspend fun refresh() {
         try {
             services = api.services()
             error = null
         } catch (t: Throwable) {
-            error = t.message ?: t::class.java.simpleName
+            error = friendlyError(t)
         } finally {
             loading = false
         }
@@ -140,7 +126,7 @@ private fun AxApp() {
         loading = true
         refresh()
         while (true) {
-            delay(2_000)
+            delay(2_500)
             refresh()
         }
     }
@@ -183,10 +169,7 @@ private fun AxApp() {
                     loading = loading,
                     error = error,
                     onRefresh = { scope.launch { refresh() } },
-                    onEditEndpoint = {
-                        endpointDraft = endpoint
-                        showEndpointDialog = true
-                    },
+                    onGuide = { tab = MainTab.GUIDE },
                     onToggle = { service ->
                         scope.launch {
                             runCatching {
@@ -195,7 +178,7 @@ private fun AxApp() {
                                 } else {
                                     api.start(service.id)
                                 }
-                            }.onFailure { error = it.message }
+                            }.onFailure { error = friendlyError(it) }
                             refresh()
                         }
                     },
@@ -203,21 +186,20 @@ private fun AxApp() {
                         scope.launch {
                             runCatching { api.logs(service.id) }
                                 .onSuccess {
-                                    logsTitle = service.name
+                                    logsFor = service.name
                                     logLines = it
                                 }
-                                .onFailure { error = it.message }
+                                .onFailure { error = friendlyError(it) }
                         }
                     }
                 )
 
                 MainTab.GUIDE -> GuideScreen(context)
-
                 MainTab.SETTINGS -> SettingsScreen(
                     endpoint = endpoint,
                     onEditEndpoint = {
                         endpointDraft = endpoint
-                        showEndpointDialog = true
+                        endpointDialog = true
                     },
                     onResetEndpoint = {
                         endpointStore.save(EndpointStore.DEFAULT_ENDPOINT)
@@ -226,83 +208,101 @@ private fun AxApp() {
                         loading = true
                         error = null
                     },
-                    onShowGuide = { showWelcome = true }
+                    onGuide = { tab = MainTab.GUIDE }
                 )
             }
         }
     }
 
-    if (showWelcome) {
-        WelcomeDialog(
-            onDismiss = {
+    if (welcome) {
+        AlertDialog(
+            onDismissRequest = {
                 endpointStore.markGuideSeen()
-                showWelcome = false
+                welcome = false
             },
-            onOpenGuide = {
-                endpointStore.markGuideSeen()
-                showWelcome = false
-                tab = MainTab.GUIDE
+            confirmButton = {
+                Button(
+                    onClick = {
+                        endpointStore.markGuideSeen()
+                        welcome = false
+                        tab = MainTab.GUIDE
+                    }
+                ) { Text("开始设置") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        endpointStore.markGuideSeen()
+                        welcome = false
+                    }
+                ) { Text("先看看首页") }
+            },
+            title = { Text("欢迎使用 Ax") },
+            text = {
+                Text("Ax 用来控制运行在 Termux 里的 Agent 和代理服务。第一次使用只需要按“使用”页的步骤配置一次。")
             }
         )
     }
 
-    if (showEndpointDialog) {
+    if (endpointDialog) {
         AlertDialog(
-            onDismissRequest = { showEndpointDialog = false },
+            onDismissRequest = { endpointDialog = false },
             confirmButton = {
                 TextButton(
                     onClick = {
                         val normalized = normalizeEndpoint(endpointDraft)
                         if (normalized == null) {
-                            error = "连接地址无效，请填写以 http:// 或 https:// 开头的完整地址。"
+                            error = "连接地址无效，请填写完整的 http:// 或 https:// 地址。"
                         } else {
                             endpointStore.save(normalized)
                             endpoint = normalized
                             services = emptyList()
                             loading = true
                             error = null
-                            showEndpointDialog = false
+                            endpointDialog = false
                         }
                     }
                 ) { Text("保存") }
             },
             dismissButton = {
-                TextButton(onClick = { showEndpointDialog = false }) { Text("取消") }
+                TextButton(onClick = { endpointDialog = false }) { Text("取消") }
             },
-            title = { Text("连接地址") },
+            title = { Text("Agent 连接地址") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
                         value = endpointDraft,
                         onValueChange = { endpointDraft = it },
                         singleLine = true,
-                        label = { Text("Ax Agent 地址") },
+                        label = { Text("地址") },
                         placeholder = { Text(EndpointStore.DEFAULT_ENDPOINT) }
                     )
                     Text(
-                        "同一台手机使用 Termux 时，保持默认地址即可。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = AxTextMuted
+                        "如果 Ax Agent 和 App 都在同一台手机上，保持默认地址即可。",
+                        color = AxMuted,
+                        style = MaterialTheme.typography.bodySmall
                     )
                 }
             }
         )
     }
 
-    if (logsTitle != null) {
+    if (logsFor != null) {
         AlertDialog(
-            onDismissRequest = { logsTitle = null },
-            confirmButton = { TextButton(onClick = { logsTitle = null }) { Text("关闭") } },
-            title = { Text("${logsTitle.orEmpty()} · 日志") },
+            onDismissRequest = { logsFor = null },
+            confirmButton = {
+                TextButton(onClick = { logsFor = null }) { Text("关闭") }
+            },
+            title = { Text("${logsFor.orEmpty()} · 日志") },
             text = {
                 Surface(
-                    color = Color(0xFF05070B),
+                    color = Color(0xFF03050A),
                     shape = RoundedCornerShape(14.dp)
                 ) {
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 160.dp, max = 420.dp)
+                            .heightIn(min = 180.dp, max = 420.dp)
                             .padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
@@ -310,7 +310,7 @@ private fun AxApp() {
                             item {
                                 Text(
                                     "暂时没有日志。",
-                                    color = AxTextMuted,
+                                    color = AxMuted,
                                     fontFamily = FontFamily.Monospace
                                 )
                             }
@@ -318,7 +318,7 @@ private fun AxApp() {
                             items(logLines) { line ->
                                 Text(
                                     line,
-                                    color = Color(0xFFD6DEEE),
+                                    color = Color(0xFFD8E0F0),
                                     fontFamily = FontFamily.Monospace,
                                     style = MaterialTheme.typography.bodySmall
                                 )
@@ -338,19 +338,16 @@ private fun HomeScreen(
     loading: Boolean,
     error: String?,
     onRefresh: () -> Unit,
-    onEditEndpoint: () -> Unit,
+    onGuide: () -> Unit,
     onToggle: (ServiceStatus) -> Unit,
     onLogs: (ServiceStatus) -> Unit
 ) {
     val running = services.count { it.status == "running" }
-    val restarting = services.count { it.status == "restarting" }
     val online = error == null && !loading
 
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 18.dp),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 20.dp, bottom = 24.dp),
+        modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 18.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
@@ -359,49 +356,33 @@ private fun HomeScreen(
                 shape = RoundedCornerShape(28.dp)
             ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(18.dp),
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Image(
-                        painter = painterResource(R.drawable.ax_logo),
+                        painter = painterResource(R.drawable.ic_launcher_foreground),
                         contentDescription = "Ax",
-                        modifier = Modifier
-                            .size(76.dp)
-                            .clip(RoundedCornerShape(22.dp))
+                        modifier = Modifier.size(78.dp).clip(RoundedCornerShape(22.dp))
                     )
                     Spacer(Modifier.size(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "Ax 控制台",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Black
-                        )
+                        Text("Ax 控制台", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
                         Spacer(Modifier.height(4.dp))
                         Text(
                             if (online) "● Agent 已连接" else "○ Agent 未连接",
                             color = if (online) AxSuccess else AxWarning,
                             fontWeight = FontWeight.SemiBold
                         )
-                        Text(
-                            endpoint,
-                            color = AxTextMuted,
-                            style = MaterialTheme.typography.bodySmall
-                        )
+                        Text(endpoint, color = AxMuted, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
         }
 
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MetricCard("运行中", running.toString(), AxSuccess, Modifier.weight(1f))
-                MetricCard("重启中", restarting.toString(), AxWarning, Modifier.weight(1f))
-                MetricCard("服务", services.size.toString(), AxBlueSoft, Modifier.weight(1f))
+                MetricCard("全部服务", services.size.toString(), AxBlueSoft, Modifier.weight(1f))
             }
         }
 
@@ -409,22 +390,21 @@ private fun HomeScreen(
             item {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF2A1D18)),
-                    shape = RoundedCornerShape(20.dp)
+                    shape = RoundedCornerShape(22.dp)
                 ) {
                     Column(Modifier.padding(16.dp)) {
-                        Text("暂时连接不到 Ax Agent", fontWeight = FontWeight.Bold, color = AxWarning)
-                        Spacer(Modifier.height(5.dp))
+                        Text("还没连接到 Agent", fontWeight = FontWeight.Bold, color = AxWarning)
+                        Spacer(Modifier.height(6.dp))
                         Text(
-                            "请打开 Termux，确认已安装 Ax，并执行 ax-start。",
-                            color = Color(0xFFE4D3C7),
-                            style = MaterialTheme.typography.bodyMedium
+                            "第一次使用请先打开“使用”页，按步骤在 Termux 里安装并启动 Ax Agent。",
+                            color = Color(0xFFE6D6CB)
                         )
-                        Spacer(Modifier.height(8.dp))
-                        Text(error, color = AxTextMuted, style = MaterialTheme.typography.bodySmall)
+                        Spacer(Modifier.height(10.dp))
+                        Text(error, color = AxMuted, style = MaterialTheme.typography.bodySmall)
                         Spacer(Modifier.height(12.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = onRefresh) { Text("重新连接") }
-                            OutlinedButton(onClick = onEditEndpoint) { Text("连接设置") }
+                            Button(onClick = onGuide) { Text("查看教程") }
+                            OutlinedButton(onClick = onRefresh) { Text("重新连接") }
                         }
                     }
                 }
@@ -433,7 +413,7 @@ private fun HomeScreen(
 
         item {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -445,23 +425,26 @@ private fun HomeScreen(
         if (loading && services.isEmpty()) {
             item {
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(36.dp),
+                    Modifier.fillMaxWidth().padding(34.dp),
                     contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
+                ) { CircularProgressIndicator() }
             }
         } else if (services.isEmpty() && error == null) {
-            item { EmptyServicesCard() }
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = AxSurface),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Column(Modifier.padding(18.dp)) {
+                        Text("还没有服务", fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(5.dp))
+                        Text("服务由 Termux 中的 Ax Agent 配置管理。", color = AxMuted)
+                    }
+                }
+            }
         } else {
             items(services, key = { it.id }) { service ->
-                ServiceCard(
-                    service = service,
-                    onToggle = { onToggle(service) },
-                    onLogs = { onLogs(service) }
-                )
+                ServiceCard(service, { onToggle(service) }, { onLogs(service) })
             }
         }
     }
@@ -476,24 +459,7 @@ private fun MetricCard(label: String, value: String, accent: Color, modifier: Mo
     ) {
         Column(Modifier.padding(14.dp)) {
             Text(value, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, color = accent)
-            Text(label, style = MaterialTheme.typography.bodySmall, color = AxTextMuted)
-        }
-    }
-}
-
-@Composable
-private fun EmptyServicesCard() {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = AxSurface),
-        shape = RoundedCornerShape(20.dp)
-    ) {
-        Column(Modifier.padding(18.dp)) {
-            Text("还没有服务", fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(5.dp))
-            Text(
-                "服务由 Termux 中的 ~/.config/ax/ax.json 管理。默认模板已经包含 Claude Code Proxy。",
-                color = AxTextMuted
-            )
+            Text(label, color = AxMuted, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -505,68 +471,57 @@ private fun ServiceCard(service: ServiceStatus, onToggle: () -> Unit, onLogs: ()
     val statusColor = when (service.status) {
         "running" -> AxSuccess
         "restarting" -> AxWarning
-        else -> AxTextMuted
+        else -> AxMuted
     }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = AxSurface),
-        shape = RoundedCornerShape(24.dp)
+        shape = RoundedCornerShape(22.dp)
     ) {
-        Column(Modifier.padding(17.dp)) {
+        Column(Modifier.padding(16.dp)) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top,
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(service.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(4.dp))
-                    Text(serviceStatusText(service), color = statusColor, fontWeight = FontWeight.Medium)
+                    Text(serviceStatusText(service), color = statusColor)
                 }
-                Surface(color = statusColor.copy(alpha = 0.14f), shape = RoundedCornerShape(50)) {
+                Surface(
+                    color = statusColor.copy(alpha = 0.14f),
+                    shape = RoundedCornerShape(50)
+                ) {
                     Text(
-                        text = if (active) "已启用" else "已停止",
+                        if (active) "已启用" else "已停止",
                         color = statusColor,
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                        style = MaterialTheme.typography.labelMedium
                     )
                 }
             }
 
             if (running) {
-                Spacer(Modifier.height(14.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Spacer(Modifier.height(12.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     MiniInfo("PID", service.pid.toString(), Modifier.weight(1f))
                     MiniInfo("运行时间", formatUptime(service.uptimeSeconds), Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    MiniInfo("CPU", "${"%.1f".format(service.cpuPercent)}%", Modifier.weight(1f))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MiniInfo("CPU", "%.1f%%".format(service.cpuPercent), Modifier.weight(1f))
                     MiniInfo("内存", formatBytes(service.memoryBytes), Modifier.weight(1f))
                 }
             }
 
-            if (service.restartPolicy != "never") {
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "自动重启：${restartPolicyText(service.restartPolicy)} · 已重启 ${service.restartCount} 次",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = AxTextMuted
-                )
-            }
-
             if (!service.lastError.isNullOrBlank()) {
                 Spacer(Modifier.height(10.dp))
-                Text(
-                    "最近错误：${service.lastError}",
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall
-                )
+                Text(service.lastError, color = AxDanger, style = MaterialTheme.typography.bodySmall)
             }
 
             Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick = onToggle,
                     modifier = Modifier.weight(1f),
@@ -584,18 +539,22 @@ private fun ServiceCard(service: ServiceStatus, onToggle: () -> Unit, onLogs: ()
 
 @Composable
 private fun MiniInfo(label: String, value: String, modifier: Modifier = Modifier) {
-    Surface(modifier = modifier, color = AxSurfaceRaised, shape = RoundedCornerShape(14.dp)) {
+    Surface(
+        modifier = modifier,
+        color = AxSurfaceRaised,
+        shape = RoundedCornerShape(14.dp)
+    ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            Text(label, color = AxTextMuted, style = MaterialTheme.typography.labelSmall)
-            Text(value, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+            Text(label, color = AxMuted, style = MaterialTheme.typography.labelSmall)
+            Text(value, fontWeight = FontWeight.SemiBold)
         }
     }
 }
 
 @Composable
 private fun GuideScreen(context: Context) {
-    val installCommand = "pkg install -y git && git clone --depth=1 https://github.com/Wyun09/Ax.git && bash Ax/scripts/install-termux.sh"
-    val startCommand = "~/.local/bin/ax-start"
+    val install = "pkg install -y git && git clone --depth=1 https://github.com/Wyun09/Ax.git && bash Ax/scripts/install-termux.sh"
+    val start = "~/.local/bin/ax-start"
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp),
@@ -604,40 +563,30 @@ private fun GuideScreen(context: Context) {
     ) {
         item {
             Text("第一次使用", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
-            Text("照着下面做一次，以后打开 Ax 就能直接控制。", color = AxTextMuted)
+            Text("照着做一次，以后打开 Ax 就能直接控制。", color = AxMuted)
         }
+        item { GuideStep("1", "安装 Termux", "先安装并打开 Termux，Ax Agent 会运行在 Termux 中。") }
         item {
-            GuideStep("1", "安装 Termux", "先在手机上准备好 Termux。Ax 的后台 Agent 会运行在 Termux 里。")
-        }
-        item {
-            CommandStep("2", "安装 Ax Agent", installCommand, "复制安装命令") {
-                copyText(context, "Ax 安装命令", installCommand)
+            CommandStep("2", "安装 Ax Agent", install, "复制安装命令") {
+                copyText(context, "Ax 安装命令", install)
             }
         }
         item {
-            CommandStep("3", "启动 Agent", startCommand, "复制启动命令") {
-                copyText(context, "Ax 启动命令", startCommand)
+            CommandStep("3", "启动 Agent", start, "复制启动命令") {
+                copyText(context, "Ax 启动命令", start)
             }
         }
-        item {
-            GuideStep(
-                "4",
-                "回到首页",
-                "默认连接地址是 127.0.0.1:18766。看到“Agent 已连接”以后，就可以启动 Claude Code Proxy 等服务。"
-            )
-        }
+        item { GuideStep("4", "回到首页", "看到“Agent 已连接”后，就可以启动 Claude Code Proxy 等服务。") }
         item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF111D35)),
+                colors = CardDefaults.cardColors(containerColor = AxSurface),
                 shape = RoundedCornerShape(20.dp)
             ) {
                 Column(Modifier.padding(16.dp)) {
-                    Text("Claude Code Proxy", fontWeight = FontWeight.Bold, color = AxBlueSoft)
+                    Text("默认地址", fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(5.dp))
-                    Text(
-                        "默认配置已经包含 claude-code-proxy serve --port 18765。只要 Termux 里已经安装 claude-code-proxy，首页就能直接启动。",
-                        color = Color(0xFFC9D7F6)
-                    )
+                    Text(EndpointStore.DEFAULT_ENDPOINT, fontFamily = FontFamily.Monospace, color = AxBlueSoft)
+                    Text("同一台手机使用时无需修改。", color = AxMuted)
                 }
             }
         }
@@ -654,8 +603,8 @@ private fun GuideStep(number: String, title: String, description: String) {
             Spacer(Modifier.size(13.dp))
             Column {
                 Text(title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(4.dp))
-                Text(description, color = AxTextMuted)
+                Spacer(Modifier.height(5.dp))
+                Text(description, color = AxMuted)
             }
         }
     }
@@ -676,9 +625,9 @@ private fun CommandStep(number: String, title: String, command: String, buttonTe
             Surface(color = Color(0xFF05070B), shape = RoundedCornerShape(14.dp)) {
                 Text(
                     command,
-                    modifier = Modifier.padding(12.dp),
-                    color = Color(0xFFD6DEEE),
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
                     fontFamily = FontFamily.Monospace,
+                    color = Color(0xFFD7E0F3),
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -693,7 +642,7 @@ private fun SettingsScreen(
     endpoint: String,
     onEditEndpoint: () -> Unit,
     onResetEndpoint: () -> Unit,
-    onShowGuide: () -> Unit
+    onGuide: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp),
@@ -702,7 +651,7 @@ private fun SettingsScreen(
     ) {
         item {
             Text("设置", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
-            Text("一般情况下不需要修改这里。", color = AxTextMuted)
+            Text("一般情况下不需要修改连接地址。", color = AxMuted)
         }
         item {
             Card(colors = CardDefaults.cardColors(containerColor = AxSurface), shape = RoundedCornerShape(22.dp)) {
@@ -713,7 +662,7 @@ private fun SettingsScreen(
                     Spacer(Modifier.height(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = onEditEndpoint) { Text("修改") }
-                        OutlinedButton(onClick = onResetEndpoint) { Text("恢复本机地址") }
+                        OutlinedButton(onClick = onResetEndpoint) { Text("恢复默认") }
                     }
                 }
             }
@@ -721,67 +670,54 @@ private fun SettingsScreen(
         item {
             Card(colors = CardDefaults.cardColors(containerColor = AxSurface), shape = RoundedCornerShape(22.dp)) {
                 Column(Modifier.padding(16.dp)) {
-                    Text("后台状态通知", fontWeight = FontWeight.Bold)
+                    Text("后台通知", fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(5.dp))
-                    Text("Ax 会通过低优先级前台通知显示 Agent 是否在线和当前运行服务数量。", color = AxTextMuted)
+                    Text(
+                        "为解决部分手机启动闪退，0.2.1 暂时关闭自动前台服务。服务控制和状态刷新不受影响。",
+                        color = AxMuted
+                    )
                 }
             }
         }
         item {
-            OutlinedButton(onClick = onShowGuide, modifier = Modifier.fillMaxWidth()) { Text("重新查看使用教程") }
+            OutlinedButton(onClick = onGuide, modifier = Modifier.fillMaxWidth()) { Text("查看使用教程") }
         }
         item {
-            Text("Ax 0.2.0 · Agent eXecution", modifier = Modifier.fillMaxWidth(), color = AxTextMuted, style = MaterialTheme.typography.bodySmall)
+            Text("Ax 0.2.1", color = AxMuted, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
 
-@Composable
-private fun WelcomeDialog(onDismiss: () -> Unit, onOpenGuide: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = { Button(onClick = onOpenGuide) { Text("开始设置") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("稍后再说") } },
-        title = { Text("欢迎使用 Ax") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Ax 用来控制运行在 Termux 里的 AI 服务。")
-                Text("第一次使用需要先安装并启动 Ax Agent，整个过程只需要几条命令。", color = AxTextMuted)
-            }
-        }
-    )
+private fun copyText(context: Context, label: String, value: String) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText(label, value))
 }
 
 private fun serviceStatusText(service: ServiceStatus): String = when (service.status) {
     "running" -> "● 运行中"
-    "restarting" -> "↻ ${service.restartInSeconds} 秒后自动重启"
+    "restarting" -> "↻ ${service.restartInSeconds} 秒后重启"
     else -> "○ 已停止"
 }
 
-private fun restartPolicyText(policy: String): String = when (policy) {
-    "always" -> "始终"
-    "on-failure" -> "异常退出时"
-    else -> "关闭"
+private fun friendlyError(t: Throwable): String {
+    val message = t.message.orEmpty()
+    return when {
+        message.contains("Connection refused", ignoreCase = true) -> "Agent 没有启动或端口 18766 无法连接。"
+        message.contains("Failed to connect", ignoreCase = true) -> "无法连接 Ax Agent，请先在 Termux 中运行 ax-start。"
+        message.contains("timeout", ignoreCase = true) -> "连接 Agent 超时。"
+        else -> message.ifBlank { "无法连接 Ax Agent。" }
+    }
 }
 
 private fun formatUptime(seconds: Long): String {
     val hours = seconds / 3600
     val minutes = (seconds % 3600) / 60
     val secs = seconds % 60
-    return when {
-        hours > 0 -> "${hours}小时 ${minutes}分"
-        minutes > 0 -> "${minutes}分 ${secs}秒"
-        else -> "${secs}秒"
-    }
+    return if (hours > 0) "%dh %02dm".format(hours, minutes) else "%dm %02ds".format(minutes, secs)
 }
 
 private fun formatBytes(bytes: Long): String {
     if (bytes <= 0) return "0 B"
     val mb = bytes / (1024.0 * 1024.0)
     return if (mb >= 1024) "%.2f GB".format(mb / 1024.0) else "%.1f MB".format(mb)
-}
-
-private fun copyText(context: Context, label: String, text: String) {
-    val clipboard = context.getSystemService(ClipboardManager::class.java)
-    clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
 }
