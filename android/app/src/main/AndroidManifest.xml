@@ -7,6 +7,8 @@
 
     <application
         android:allowBackup="true"
+        android:icon="@drawable/ax_logo"
+        android:roundIcon="@drawable/ax_logo"
         android:label="Ax"
         android:supportsRtl="true"
         android:theme="@style/Theme.Ax"
@@ -26,7 +28,7 @@
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Keeps the user informed about the connection state of the configured local Ax agent." />
+                android:value="显示用户配置的 Ax Agent 连接状态。" />
         </service>
     </application>
 </manifest>

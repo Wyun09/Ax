@@ -22,7 +22,7 @@ class AgentMonitorService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannel()
-        startForeground(NOTIFICATION_ID, buildNotification("Connecting to Ax agent…"))
+        startForeground(NOTIFICATION_ID, buildNotification("正在连接 Ax Agent…"))
         scope.launch { monitorLoop() }
     }
 
@@ -45,17 +45,17 @@ class AgentMonitorService : Service() {
                     val running = services.count { it.status == "running" }
                     val restarting = services.count { it.status == "restarting" }
                     buildString {
-                        append("Agent connected · ")
+                        append("Agent 已连接 · ")
                         append(running)
-                        append(" running")
+                        append(" 个服务运行中")
                         if (restarting > 0) {
                             append(" · ")
                             append(restarting)
-                            append(" restarting")
+                            append(" 个正在重启")
                         }
                     }
                 },
-                onFailure = { "Agent offline · $endpoint" }
+                onFailure = { "Agent 未连接 · $endpoint" }
             )
             notificationManager.notify(NOTIFICATION_ID, buildNotification(text))
             delay(10_000)
@@ -65,10 +65,10 @@ class AgentMonitorService : Service() {
     private fun createChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Ax agent status",
+            "Ax Agent 状态",
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "Shows whether the local or configured Ax agent is reachable."
+            description = "显示 Ax Agent 是否在线以及当前运行服务数量。"
             setShowBadge(false)
         }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)

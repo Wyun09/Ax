@@ -12,9 +12,16 @@ class EndpointStore(context: Context) {
         prefs.edit().putString(KEY_ENDPOINT, endpoint).apply()
     }
 
+    fun guideSeen(): Boolean = prefs.getBoolean(KEY_GUIDE_SEEN, false)
+
+    fun markGuideSeen() {
+        prefs.edit().putBoolean(KEY_GUIDE_SEEN, true).apply()
+    }
+
     companion object {
         const val DEFAULT_ENDPOINT = "http://127.0.0.1:18766"
         private const val KEY_ENDPOINT = "agent_endpoint"
+        private const val KEY_GUIDE_SEEN = "guide_seen"
     }
 }
 
