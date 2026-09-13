@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -455,9 +454,7 @@ private fun HomeScreen(
                 }
             }
         } else if (services.isEmpty() && error == null) {
-            item {
-                EmptyServicesCard()
-            }
+            item { EmptyServicesCard() }
         } else {
             items(services, key = { it.id }) { service ->
                 ServiceCard(
@@ -471,12 +468,7 @@ private fun HomeScreen(
 }
 
 @Composable
-private fun MetricCard(
-    label: String,
-    value: String,
-    accent: Color,
-    modifier: Modifier = Modifier
-) {
+private fun MetricCard(label: String, value: String, accent: Color, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = AxSurfaceRaised),
@@ -507,11 +499,7 @@ private fun EmptyServicesCard() {
 }
 
 @Composable
-private fun ServiceCard(
-    service: ServiceStatus,
-    onToggle: () -> Unit,
-    onLogs: () -> Unit
-) {
+private fun ServiceCard(service: ServiceStatus, onToggle: () -> Unit, onLogs: () -> Unit) {
     val running = service.status == "running"
     val active = running || service.status == "restarting"
     val statusColor = when (service.status) {
@@ -536,10 +524,7 @@ private fun ServiceCard(
                     Spacer(Modifier.height(4.dp))
                     Text(serviceStatusText(service), color = statusColor, fontWeight = FontWeight.Medium)
                 }
-                Surface(
-                    color = statusColor.copy(alpha = 0.14f),
-                    shape = RoundedCornerShape(50)
-                ) {
+                Surface(color = statusColor.copy(alpha = 0.14f), shape = RoundedCornerShape(50)) {
                     Text(
                         text = if (active) "已启用" else "已停止",
                         color = statusColor,
@@ -586,19 +571,12 @@ private fun ServiceCard(
                     onClick = onToggle,
                     modifier = Modifier.weight(1f),
                     colors = if (active) {
-                        ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF293246),
-                            contentColor = Color.White
-                        )
+                        ButtonDefaults.buttonColors(containerColor = Color(0xFF293246), contentColor = Color.White)
                     } else {
                         ButtonDefaults.buttonColors(containerColor = AxBlue)
                     }
-                ) {
-                    Text(if (active) "停止" else "启动")
-                }
-                OutlinedButton(onClick = onLogs, modifier = Modifier.weight(1f)) {
-                    Text("查看日志")
-                }
+                ) { Text(if (active) "停止" else "启动") }
+                OutlinedButton(onClick = onLogs, modifier = Modifier.weight(1f)) { Text("查看日志") }
             }
         }
     }
@@ -606,11 +584,7 @@ private fun ServiceCard(
 
 @Composable
 private fun MiniInfo(label: String, value: String, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier,
-        color = AxSurfaceRaised,
-        shape = RoundedCornerShape(14.dp)
-    ) {
+    Surface(modifier = modifier, color = AxSurfaceRaised, shape = RoundedCornerShape(14.dp)) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             Text(label, color = AxTextMuted, style = MaterialTheme.typography.labelSmall)
             Text(value, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
@@ -620,14 +594,11 @@ private fun MiniInfo(label: String, value: String, modifier: Modifier = Modifier
 
 @Composable
 private fun GuideScreen(context: Context) {
-    val installCommand =
-        "pkg install -y git && git clone --depth=1 https://github.com/Wyun09/Ax.git && bash Ax/scripts/install-termux.sh"
+    val installCommand = "pkg install -y git && git clone --depth=1 https://github.com/Wyun09/Ax.git && bash Ax/scripts/install-termux.sh"
     val startCommand = "~/.local/bin/ax-start"
 
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 18.dp),
+        modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 22.dp, bottom = 30.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -636,35 +607,23 @@ private fun GuideScreen(context: Context) {
             Text("照着下面做一次，以后打开 Ax 就能直接控制。", color = AxTextMuted)
         }
         item {
-            GuideStep(
-                number = "1",
-                title = "安装 Termux",
-                description = "先在手机上准备好 Termux。Ax 的后台 Agent 会运行在 Termux 里。"
-            )
+            GuideStep("1", "安装 Termux", "先在手机上准备好 Termux。Ax 的后台 Agent 会运行在 Termux 里。")
         }
         item {
-            CommandStep(
-                number = "2",
-                title = "安装 Ax Agent",
-                command = installCommand,
-                buttonText = "复制安装命令",
-                onCopy = { copyText(context, "Ax 安装命令", installCommand) }
-            )
+            CommandStep("2", "安装 Ax Agent", installCommand, "复制安装命令") {
+                copyText(context, "Ax 安装命令", installCommand)
+            }
         }
         item {
-            CommandStep(
-                number = "3",
-                title = "启动 Agent",
-                command = startCommand,
-                buttonText = "复制启动命令",
-                onCopy = { copyText(context, "Ax 启动命令", startCommand) }
-            )
+            CommandStep("3", "启动 Agent", startCommand, "复制启动命令") {
+                copyText(context, "Ax 启动命令", startCommand)
+            }
         }
         item {
             GuideStep(
-                number = "4",
-                title = "回到首页",
-                description = "默认连接地址是 127.0.0.1:18766。看到“Agent 已连接”以后，就可以启动 Claude Code Proxy 等服务。"
+                "4",
+                "回到首页",
+                "默认连接地址是 127.0.0.1:18766。看到“Agent 已连接”以后，就可以启动 Claude Code Proxy 等服务。"
             )
         }
         item {
@@ -687,17 +646,10 @@ private fun GuideScreen(context: Context) {
 
 @Composable
 private fun GuideStep(number: String, title: String, description: String) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = AxSurface),
-        shape = RoundedCornerShape(22.dp)
-    ) {
+    Card(colors = CardDefaults.cardColors(containerColor = AxSurface), shape = RoundedCornerShape(22.dp)) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
             Surface(color = AxBlue, shape = RoundedCornerShape(12.dp)) {
-                Text(
-                    number,
-                    fontWeight = FontWeight.Black,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                )
+                Text(number, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
             }
             Spacer(Modifier.size(13.dp))
             Column {
@@ -710,25 +662,12 @@ private fun GuideStep(number: String, title: String, description: String) {
 }
 
 @Composable
-private fun CommandStep(
-    number: String,
-    title: String,
-    command: String,
-    buttonText: String,
-    onCopy: () -> Unit
-) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = AxSurface),
-        shape = RoundedCornerShape(22.dp)
-    ) {
+private fun CommandStep(number: String, title: String, command: String, buttonText: String, onCopy: () -> Unit) {
+    Card(colors = CardDefaults.cardColors(containerColor = AxSurface), shape = RoundedCornerShape(22.dp)) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(color = AxBlue, shape = RoundedCornerShape(12.dp)) {
-                    Text(
-                        number,
-                        fontWeight = FontWeight.Black,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                    )
+                    Text(number, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
                 }
                 Spacer(Modifier.size(13.dp))
                 Text(title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
@@ -744,9 +683,7 @@ private fun CommandStep(
                 )
             }
             Spacer(Modifier.height(10.dp))
-            OutlinedButton(onClick = onCopy, modifier = Modifier.fillMaxWidth()) {
-                Text(buttonText)
-            }
+            OutlinedButton(onClick = onCopy, modifier = Modifier.fillMaxWidth()) { Text(buttonText) }
         }
     }
 }
@@ -759,9 +696,7 @@ private fun SettingsScreen(
     onShowGuide: () -> Unit
 ) {
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 18.dp),
+        modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 22.dp, bottom = 30.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -770,10 +705,7 @@ private fun SettingsScreen(
             Text("一般情况下不需要修改这里。", color = AxTextMuted)
         }
         item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = AxSurface),
-                shape = RoundedCornerShape(22.dp)
-            ) {
+            Card(colors = CardDefaults.cardColors(containerColor = AxSurface), shape = RoundedCornerShape(22.dp)) {
                 Column(Modifier.padding(16.dp)) {
                     Text("Agent 连接地址", fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(6.dp))
@@ -787,49 +719,29 @@ private fun SettingsScreen(
             }
         }
         item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = AxSurface),
-                shape = RoundedCornerShape(22.dp)
-            ) {
+            Card(colors = CardDefaults.cardColors(containerColor = AxSurface), shape = RoundedCornerShape(22.dp)) {
                 Column(Modifier.padding(16.dp)) {
                     Text("后台状态通知", fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(5.dp))
-                    Text(
-                        "Ax 会通过低优先级前台通知显示 Agent 是否在线和当前运行服务数量。",
-                        color = AxTextMuted
-                    )
+                    Text("Ax 会通过低优先级前台通知显示 Agent 是否在线和当前运行服务数量。", color = AxTextMuted)
                 }
             }
         }
         item {
-            OutlinedButton(onClick = onShowGuide, modifier = Modifier.fillMaxWidth()) {
-                Text("重新查看使用教程")
-            }
+            OutlinedButton(onClick = onShowGuide, modifier = Modifier.fillMaxWidth()) { Text("重新查看使用教程") }
         }
         item {
-            Text(
-                "Ax 0.2.0 · Agent eXecution",
-                modifier = Modifier.fillMaxWidth(),
-                color = AxTextMuted,
-                style = MaterialTheme.typography.bodySmall
-            )
+            Text("Ax 0.2.0 · Agent eXecution", modifier = Modifier.fillMaxWidth(), color = AxTextMuted, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
 
 @Composable
-private fun WelcomeDialog(
-    onDismiss: () -> Unit,
-    onOpenGuide: () -> Unit
-) {
+private fun WelcomeDialog(onDismiss: () -> Unit, onOpenGuide: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = {
-            Button(onClick = onOpenGuide) { Text("开始设置") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("稍后再说") }
-        },
+        confirmButton = { Button(onClick = onOpenGuide) { Text("开始设置") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("稍后再说") } },
         title = { Text("欢迎使用 Ax") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
